@@ -1,0 +1,7 @@
+streamlit
+pandas
+openpyxl
+aiohttp
+tqdm
+folium
+streamlit-folium
