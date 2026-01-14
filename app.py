@@ -29,7 +29,7 @@ except Exception:
 # CONFIG
 # ======================
 DEFAULT_SCRAPER_SCRIPT = "scuolainchiaro_scrape_v4_patched.py"  # supporta --endpoints e --rawdir
-DEFAULT_REGISTRY = "input.csv"
+DEFAULT_REGISTRY = "data_static/input.csv"
 DEFAULT_SEP = ";"
 
 DATA_DIR = Path("data")
