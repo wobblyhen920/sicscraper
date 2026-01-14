@@ -418,17 +418,30 @@ elif step == 1:
                 st.session_state["var_selection"][k] = keep
                 st.session_state[f"var_{k}"] = keep
             st.rerun()
+            
+with c2:
+    st.markdown("**Variabili**")
+    for k, title in ENDPOINTS:
+        key = f"var_{k}"
 
-    with c2:
-        st.markdown("**Variabili**")
-        for k, title in ENDPOINTS:
-            if k == "anagrafica_base":
-                st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=f"var_{k}")
-                st.session_state["var_selection"][k] = True
-                st.session_state[f"var_{k}"] = True
-            else:
-                checked = st.checkbox(title, value=bool(st.session_state.get(f"var_{k}", True)), key=f"var_{k}")
-                st.session_state["var_selection"][k] = bool(checked)
+        if k == "anagrafica_base":
+            # default PRIMA del widget
+            if key not in st.session_state:
+                st.session_state[key] = True
+
+            st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=key)
+
+            # sincronizza var_selection leggendo lo stato (senza riassegnare key)
+            st.session_state["var_selection"][k] = True
+
+        else:
+            # default PRIMA del widget
+            if key not in st.session_state:
+                st.session_state[key] = True  # tuo default attuale
+
+            checked = st.checkbox(title, key=key)
+            st.session_state["var_selection"][k] = bool(checked)
+
 
     picked = [k for k, _ in ENDPOINTS if st.session_state["var_selection"].get(k, False)]
     st.info(f"Variabili selezionate: {len(picked)}")
