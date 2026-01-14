@@ -419,20 +419,20 @@ elif step == 1:
                 st.session_state[f"var_{k}"] = keep
             st.rerun()
             
-with c2:
-    st.markdown("**Variabili**")
-    for k, title in ENDPOINTS:
-        key = f"var_{k}"
-
-        if k == "anagrafica_base":
-            # default PRIMA del widget
-            if key not in st.session_state:
-                st.session_state[key] = True
-
-            st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=key)
-
-            # sincronizza var_selection leggendo lo stato (senza riassegnare key)
-            st.session_state["var_selection"][k] = True
+    with c2:
+        st.markdown("**Variabili**")
+        for k, title in ENDPOINTS:
+            key = f"var_{k}"
+    
+            if k == "anagrafica_base":
+                # default PRIMA del widget
+                if key not in st.session_state:
+                    st.session_state[key] = True
+    
+                st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=key)
+    
+                # sincronizza var_selection leggendo lo stato (senza riassegnare key)
+                st.session_state["var_selection"][k] = True
 
         else:
             # default PRIMA del widget
