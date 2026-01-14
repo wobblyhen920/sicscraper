@@ -1,7 +1,7 @@
 import io
 import base64
 from html import escape as html_escape
-
+import streamlit.components.v1 as components
 # Bar chart -> render in-app + (optional) embed in HTML
 try:
     import matplotlib.pyplot as plt
@@ -187,7 +187,7 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
 
         agg = (
             dfk.groupby(cat_col, dropna=False)[val_col]
-            .sum()
+            .mean()
             .sort_values(ascending=False)
             .head(30)
         )
@@ -219,7 +219,7 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
           <body>
             <h2>{html_escape(page_title)}</h2>
             <img class="img" src="data:image/png;base64,{b64}" />
-            <div class="meta">Aggregazione: somma di {html_escape(val_col)} per {html_escape(cat_col)} (top 30).</div>
+            <div class="meta">Aggregazione: media di {html_escape(val_col)} per {html_escape(cat_col)} (top 30).</div>
           </body>
         </html>
         """.strip()
@@ -869,6 +869,37 @@ elif step == 2:
     with st.expander("Log"):
         st.code((cp.stdout or "")[-8000:])
         st.code((cp.stderr or "")[-8000:])
+
+    # ---------- RENDER CHARTS IN APP (FROM GENERATED HTML) ----------
+    if make_charts:
+        st.markdown("### Grafici (tutti)")
+    
+        charts_dir = outdir / "charts"
+        index_html = charts_dir / "index.html"
+    
+        if not charts_dir.exists():
+            st.caption("Cartella charts assente.")
+        else:
+            # prendi tutti gli html dei grafici, escludendo index/readme
+            chart_pages = sorted([
+                p for p in charts_dir.glob("*.html")
+                if p.name not in ("index.html", "README.html")
+            ])
+    
+            if not chart_pages:
+                st.caption("Nessun grafico HTML trovato in charts/.")
+            else:
+                # opzionale: link all'index (se vuoi)
+                if index_html.exists():
+                    with st.expander("Index (HTML)"):
+                        components.html(index_html.read_text(encoding="utf-8"), height=260, scrolling=True)
+    
+                # mostra tutti i grafici
+                for p in chart_pages:
+                    with st.expander(p.stem, expanded=False):
+                        html = p.read_text(encoding="utf-8")
+                        components.html(html, height=620, scrolling=True)
+    
 
 # -------------------------
 # Step 4: Jobs & cache
