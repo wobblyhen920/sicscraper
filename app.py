@@ -634,105 +634,79 @@ elif step == 1:
         st.warning("Run molto grande: aumenta rischio 429/timeout. Riduci scuole o variabili.")
 
 
-# -------------------------
-# Step 3: Run
-# -------------------------
-elif step == 2:
-    st.subheader("Passo 3 · Esecuzione")
-    selected_codes = sorted(st.session_state["selected_codes"])
-    picked = [k for k, _ in ENDPOINTS if st.session_state["var_selection"].get(k, False)]
-
-    if len(selected_codes) == 0:
-        st.error("Nessuna scuola selezionata. Torna al Passo 1.")
-        st.stop()
-
-    if len(picked) == 0:
-        st.error("Nessuna variabile selezionata. Torna al Passo 2.")
-        st.stop()
-
-    # Guardrail
-    est = len(selected_codes) * len(picked)
-    force = False
-    if est > 3000:
-        force = st.checkbox("Forza comunque (rischio alto)", value=False, key="force_big")
-        if not force:
-            st.stop()
-
-    # Job
-    job_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + slug_safe(f"{len(selected_codes)}_schools")
-    job_dir = JOBS_DIR / job_id
-    outdir = job_dir / "out"
-    job_dir.mkdir(parents=True, exist_ok=True)
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    reg_map = dict(zip(reg["CODICE_SCUOLA"], reg["denominazione"]))
-    job_input = job_dir / "input_job.csv"
-    pd.DataFrame([{"CODICE_SCUOLA": c, "denominazione": reg_map.get(c, "")} for c in selected_codes]).to_csv(job_input, index=False, sep=sep)
-
-    # progress
-    prog = st.progress(0, text="Preparazione job…")
-    prog.progress(20, text="Esecuzione scraper…")
-
-    rawdir = RAW_CACHE_DIR if use_cache else None
-
-    cp = run_scraper(
-        scraper_script=scraper_script,
-        input_csv=job_input,
-        outdir=outdir,
-        sep=sep,
-        endpoints=picked,
-        wide=True,
-        skip_existing=use_cache,
-        rawdir=rawdir,
-        no_kind=drop_kind,
-        concurrency=concurrency,
-        timeout=timeout,
-        retries=retries,
-        backoff=backoff,
-    )
-
-    (job_dir / "stdout.txt").write_text(cp.stdout or "", encoding="utf-8")
-    (job_dir / "stderr.txt").write_text(cp.stderr or "", encoding="utf-8")
-
-    prog.progress(70, text="Post-process…")
-
-    anag = outdir / "anagrafica_base_wide.csv"
-    obs = outdir / "observations_semantic.csv"
-
-    meta = {
-        "job_id": job_id,
-        "n_schools": len(selected_codes),
-        "variabili": picked,
-        "use_cache": use_cache,
-        "returncode": cp.returncode,
-        "timestamp": datetime.now().isoformat(),
-    }
-    (job_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    prog.progress(100, text="Completato")
-
-    if cp.returncode != 0:
-        st.error("Errore nello scraping. Vedi stderr.")
-        st.code((cp.stderr or "")[-8000:])
-        st.stop()
-
     st.success("OK")
 
+    # ---------- CHARTS ----------
     charts_dir = outdir / "charts"
     charts_zip = job_dir / "charts.zip"
 
     if make_charts:
-        created = build_charts_from_observations(obs, outdir, picked)
+        created_html = build_charts_from_observations(obs, outdir, picked)
 
-        # zip solo charts
+        # crea charts.zip (zip della cartella charts/)
         if charts_dir.exists():
-            zip_selected(
-                [job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt", anag, obs, charts_dir, charts_zip],
-               "job.zip"
-            )
-        if created:
-            st.markdown("### Grafici (HTML)")
-            st.caption("Bar chart per variabile. Apri index.html dentro lo zip.")
+            zip_selected([charts_dir], charts_zip)
+
+        # mostra grafici IN APP (bar chart sempre)
+        st.markdown("### Grafici")
+        if obs.exists():
+            df_obs = pd.read_csv(obs, dtype=str, keep_default_na=False)
+
+            ep_col = _find_col_ci(df_obs, ["endpoint_key", "endpoint", "variabile", "key"])
+            cat_col = _find_col_ci(df_obs, ["category", "categoria", "label", "modalita", "modalità", "name", "x", "voce", "descrizione"])
+            val_col = _find_col_ci(df_obs, ["value", "valore", "y", "n", "count", "numero", "percent", "percentage", "pct"])
+            title_col = _find_col_ci(df_obs, ["title", "titolo", "nome"])
+
+            if ep_col and cat_col and val_col:
+                k_sel = st.selectbox(
+                    "Seleziona variabile da visualizzare",
+                    options=picked,
+                    index=0,
+                    key=f"chart_sel_{job_id}",
+                )
+
+                dfk = df_obs[df_obs[ep_col].astype(str) == str(k_sel)].copy()
+                dfk[val_col] = pd.to_numeric(dfk[val_col], errors="coerce")
+                dfk = dfk.dropna(subset=[val_col])
+
+                if dfk.empty:
+                    st.caption("Nessun valore numerico per questa variabile.")
+                else:
+                    page_title = k_sel
+                    if title_col and len(dfk[title_col].unique()) == 1:
+                        t = dfk[title_col].iloc[0].strip()
+                        if t:
+                            page_title = f"{k_sel} · {t}"
+
+                    agg = (
+                        dfk.groupby(cat_col, dropna=False)[val_col]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(30)
+                    )
+                    labels = [str(x) for x in agg.index.tolist()]
+                    values = [float(x) for x in agg.values.tolist()]
+
+                    if plt is not None:
+                        import matplotlib.pyplot as plt  # garantisce namespace locale
+                        fig_w = max(8.0, min(16.0, 0.45 * max(1, len(labels))))
+                        fig, ax = plt.subplots(figsize=(fig_w, 4.8))
+                        ax.bar(range(len(labels)), values)
+                        ax.set_title(page_title)
+                        ax.set_xticks(range(len(labels)))
+                        ax.set_xticklabels(labels, rotation=45, ha="right")
+                        ax.set_ylabel("Valore")
+                        fig.tight_layout()
+                        st.pyplot(fig, clear_figure=True)
+                    else:
+                        # fallback senza matplotlib
+                        st.bar_chart(pd.DataFrame({"categoria": labels, "valore": values}).set_index("categoria"))
+
+            else:
+                st.caption("Impossibile costruire grafici: mancano colonne endpoint/categoria/valore in observations_semantic.csv.")
+
+        if charts_dir.exists() and (charts_dir / "index.html").exists():
+            st.caption("Index HTML generato (se preferisci aprirlo fuori): index.html dentro charts.zip")
             if charts_zip.exists():
                 st.download_button(
                     "Scarica grafici (charts.zip)",
@@ -741,9 +715,10 @@ elif step == 2:
                     mime="application/zip",
                     key=f"dl_charts_{job_id}",
                 )
+        elif make_charts:
+            st.caption("Nessun grafico generato (controlla colonne e contenuti in observations_semantic.csv).")
 
-    
-    # Preview
+    # ---------- PREVIEW ----------
     p1, p2 = st.columns(2, gap="small")
     with p1:
         if anag.exists():
@@ -754,9 +729,10 @@ elif step == 2:
             st.caption("Preview observations_semantic.csv")
             st.dataframe(pd.read_csv(obs, dtype=str, keep_default_na=False).head(30), use_container_width=True)
 
+    # ---------- DOWNLOAD ----------
     st.markdown("### Download")
     d1, d2, d3 = st.columns(3, gap="small")
-    
+
     with d1:
         if anag.exists():
             st.download_button(
@@ -766,7 +742,7 @@ elif step == 2:
                 mime="text/csv",
                 key=f"dl_anag_{job_id}",
             )
-    
+
     with d2:
         if obs.exists():
             st.download_button(
@@ -776,26 +752,29 @@ elif step == 2:
                 mime="text/csv",
                 key=f"dl_obs_{job_id}",
             )
-    
+
     with d3:
-        zip_path = job_dir / "job.zip"  # <-- DEFINITO QUI (prima dell’uso)
-    
-        files_to_zip = [job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt"]
+        zip_path = job_dir / "job.zip"
+
+        files_to_zip = [
+            job_dir / "meta.json",
+            job_dir / "stdout.txt",
+            job_dir / "stderr.txt",
+        ]
         if anag.exists():
             files_to_zip.append(anag)
         if obs.exists():
             files_to_zip.append(obs)
-    
+
         # includi charts se presenti
-        charts_dir = outdir / "charts"
-        charts_zip = job_dir / "charts.zip"
         if charts_dir.exists():
             files_to_zip.append(charts_dir)
         if charts_zip.exists():
             files_to_zip.append(charts_zip)
-    
-        zip_selected(files_to_zip, "job.zip")
-    
+
+        # CREA davvero lo zip nel percorso zip_path
+        zip_selected(files_to_zip, zip_path)
+
         st.download_button(
             "Scarica come file zip",
             data=zip_path.read_bytes(),
@@ -804,10 +783,10 @@ elif step == 2:
             key=f"dl_zip_{job_id}",
         )
 
-
     with st.expander("Log"):
         st.code((cp.stdout or "")[-8000:])
         st.code((cp.stderr or "")[-8000:])
+
 
 # -------------------------
 # Step 4: Jobs & cache
