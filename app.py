@@ -1,4 +1,4 @@
-rimport io
+import io
 import base64
 from html import escape as html_escape
 
