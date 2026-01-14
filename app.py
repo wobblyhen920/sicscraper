@@ -200,7 +200,7 @@ def ensure_state():
 st.set_page_config(page_title="SIC Scraper", layout="wide")
 ensure_state()
 
-st.title("ScuolaInChiaro · single-user")
+st.title("ScuolaInChiaro Scraper· v. 0.1 (demo)")
 
 # Sidebar: settings (debug moved to bottom per request)
 with st.sidebar:
@@ -212,7 +212,7 @@ with st.sidebar:
     drop_kind = st.checkbox("Togli colonna kind", value=False)
     make_charts = st.checkbox("Crea grafici (HTML) per variabili selezionate", value=True)
 
-    st.markdown("### Limiti runtime (prudenza)")
+    st.markdown("### [Debug] Limiti runtime (lascia invariato se non sai che fai)")
     concurrency = st.slider("Concurrency", min_value=1, max_value=8, value=4)
     timeout = st.slider("Timeout (secondi)", min_value=15, max_value=90, value=45)
     retries = st.slider("Retries", min_value=0, max_value=4, value=2)
@@ -220,12 +220,12 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### [Debug] Script scraper")
-    scraper_script = st.text_input("Path script", value=DEFAULT_SCRAPER)
+    scraper_script = st.text_input("Posizione script scraper", value=DEFAULT_SCRAPER)
     st.caption("Esempio: scraper.py (nella stessa cartella dell'app).")
 
     st.divider()
     st.markdown("### [Debug] Registro input delle scuole")
-    registry_path = st.text_input("Path registro", value=DEFAULT_REGISTRY)
+    registry_path = st.text_input("Posizione registro input", value=DEFAULT_REGISTRY)
     upload = st.file_uploader("Oppure carica CSV", type=["csv"], label_visibility="collapsed")
 
 
@@ -273,7 +273,7 @@ step = st.session_state["step"]
 # Step 1: Schools
 # -------------------------
 if step == 0:
-    st.subheader("Passo 1 · Seleziona le scuole")
+    st.subheader("Passo 1 · Seleziona le scuole (lentamente...)")
     st.caption("Usa filtri, tabella e (opzionale) mappa. La selezione rimane valida nei passi successivi.")
 
     f1, f2, f3, f4 = st.columns([1, 1, 1, 2], gap="small")
@@ -343,7 +343,7 @@ if step == 0:
                 st.session_state["selected_codes"].discard(code)
             st.rerun()
     with cbtn3:
-        manual_codes = st.text_area("Oppure incolla codici (uno per riga)", height=90, placeholder="RMIC....\nRMPS....", key="manual_codes")
+        manual_codes = st.text_area("Oppure incolla codici meccanografici (uno per riga)", height=90, placeholder="RMIC....\nRMPS....", key="manual_codes")
         if manual_codes.strip():
             extra = [x.strip() for x in manual_codes.splitlines() if x.strip()]
             for code in extra:
