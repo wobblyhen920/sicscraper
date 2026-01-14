@@ -728,7 +728,7 @@ elif step == 2:
         if charts_dir.exists():
             zip_selected(
                 [job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt", anag, obs, charts_dir, charts_zip],
-                zip_path
+               "job.zip"
             )
         if created:
             st.markdown("### Grafici (HTML)")
@@ -754,20 +754,56 @@ elif step == 2:
             st.caption("Preview observations_semantic.csv")
             st.dataframe(pd.read_csv(obs, dtype=str, keep_default_na=False).head(30), use_container_width=True)
 
-    # Downloads (unique keys)
     st.markdown("### Download")
     d1, d2, d3 = st.columns(3, gap="small")
+    
     with d1:
         if anag.exists():
-            st.download_button("Scarica il file csv delle anagrafiche", data=anag.read_bytes(), file_name="anagrafica_base_wide.csv", mime="text/csv", key=f"dl_anag_{job_id}")
+            st.download_button(
+                "Scarica il file csv delle anagrafiche",
+                data=anag.read_bytes(),
+                file_name="anagrafica_base_wide.csv",
+                mime="text/csv",
+                key=f"dl_anag_{job_id}",
+            )
+    
     with d2:
         if obs.exists():
-            st.download_button("SCARICA IL DATASET CSV", data=obs.read_bytes(), file_name="observations_semantic.csv", mime="text/csv", key=f"dl_obs_{job_id}")
+            st.download_button(
+                "SCARICA IL DATASET CSV",
+                data=obs.read_bytes(),
+                file_name="observations_semantic.csv",
+                mime="text/csv",
+                key=f"dl_obs_{job_id}",
+            )
+    
     with d3:
-        # zip minimal: meta + logs + csv
-        zip_path = job_dir / "job.zip"
-        zip_selected([job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt", anag, obs], zip_path)
-        st.download_button("Scarica come file zip", data=zip_path.read_bytes(), file_name="job.zip", mime="application/zip", key=f"dl_zip_{job_id}")
+        zip_path = job_dir / "job.zip"  # <-- DEFINITO QUI (prima dell’uso)
+    
+        files_to_zip = [job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt"]
+        if anag.exists():
+            files_to_zip.append(anag)
+        if obs.exists():
+            files_to_zip.append(obs)
+    
+        # includi charts se presenti
+        charts_dir = outdir / "charts"
+        charts_zip = job_dir / "charts.zip"
+        if charts_dir.exists():
+            files_to_zip.append(charts_dir)
+        if charts_zip.exists():
+            files_to_zip.append(charts_zip)
+    
+        zip_selected(files_to_zip, "job.zip")
+    
+        st.download_button(
+            "Scarica come file zip",
+            data=zip_path.read_bytes(),
+            file_name="job.zip",
+            mime="application/zip",
+            key=f"dl_zip_{job_id}",
+        )
+
 
     with st.expander("Log"):
         st.code((cp.stdout or "")[-8000:])
