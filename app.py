@@ -631,8 +631,7 @@ elif step == 1:
     est = n_s * len(picked)
     st.write(f"Stima richieste: {n_s} scuole × {len(picked)} variabili = {est}")
     if est > 3000:
-        st.warning("Run molto grande: aumenta rischio 429/timeout.
-::contentReference[oaicite:0]{index=0}
+        st.warning("Run molto grande: aumenta rischio 429/timeout. Riduci scuole o variabili.")
 
 
 # -------------------------
