@@ -425,14 +425,19 @@ elif step == 1:
             key = f"var_{k}"
     
             if k == "anagrafica_base":
-                # default PRIMA del widget
                 if key not in st.session_state:
                     st.session_state[key] = True
     
                 st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=key)
-    
-                # sincronizza var_selection leggendo lo stato (senza riassegnare key)
                 st.session_state["var_selection"][k] = True
+                continue  # fondamentale: passa alla prossima variabile
+    
+            # tutte le altre variabili
+            if key not in st.session_state:
+                st.session_state[key] = True  # tuo default attuale
+    
+            checked = st.checkbox(title, key=key)
+            st.session_state["var_selection"][k] = bool(checked)
 
         else:
             # default PRIMA del widget
