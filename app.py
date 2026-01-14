@@ -1,4 +1,4 @@
-import io
+rimport io
 import base64
 from html import escape as html_escape
 
@@ -588,47 +588,41 @@ elif step == 1:
     st.caption("Queste variabili determinano quali dati vengono scaricati. Anagrafica base è obbligatoria.")
 
     c1, c2 = st.columns([1, 3], gap="large")
+
     with c1:
         if st.button("Seleziona tutte", key="vars_all"):
             for k, _ in ENDPOINTS:
                 st.session_state["var_selection"][k] = True
                 st.session_state[f"var_{k}"] = True
             st.rerun()
+
         if st.button("Deseleziona tutte (tranne anagrafica)", key="vars_none"):
             for k, _ in ENDPOINTS:
                 keep = (k == "anagrafica_base")
                 st.session_state["var_selection"][k] = keep
                 st.session_state[f"var_{k}"] = keep
             st.rerun()
-            
+
     with c2:
         st.markdown("**Variabili**")
+
         for k, title in ENDPOINTS:
             key = f"var_{k}"
-    
+
             if k == "anagrafica_base":
                 if key not in st.session_state:
                     st.session_state[key] = True
-    
+
                 st.checkbox(f"{title} (obbligatoria)", value=True, disabled=True, key=key)
                 st.session_state["var_selection"][k] = True
-                continue  # fondamentale: passa alla prossima variabile
-    
-            # tutte le altre variabili
-            if key not in st.session_state:
-                st.session_state[key] = True  # tuo default attuale
-    
-            checked = st.checkbox(title, key=key)
-            st.session_state["var_selection"][k] = bool(checked)
+                continue
 
-        else:
-            # default PRIMA del widget
+            # default PRIMA del widget (per le altre variabili)
             if key not in st.session_state:
-                st.session_state[key] = True  # tuo default attuale
+                st.session_state[key] = True  # tuo default
 
             checked = st.checkbox(title, key=key)
             st.session_state["var_selection"][k] = bool(checked)
-
 
     picked = [k for k, _ in ENDPOINTS if st.session_state["var_selection"].get(k, False)]
     st.info(f"Variabili selezionate: {len(picked)}")
@@ -637,7 +631,9 @@ elif step == 1:
     est = n_s * len(picked)
     st.write(f"Stima richieste: {n_s} scuole × {len(picked)} variabili = {est}")
     if est > 3000:
-        st.warning("Run molto grande: aumenta rischio 429/timeout. Riduci scuole o variabili.")
+        st.warning("Run molto grande: aumenta rischio 429/timeout.
+::contentReference[oaicite:0]{index=0}
+
 
 # -------------------------
 # Step 3: Run
