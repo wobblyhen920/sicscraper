@@ -1,0 +1,17 @@
+# runtime / cache / jobs
+data/
+*.xlsx
+*.zip
+*.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# streamlit
+.streamlit/
+
+# OS
+.DS_Store
