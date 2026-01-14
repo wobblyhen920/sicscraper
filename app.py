@@ -1,3 +1,13 @@
+import io
+import base64
+from html import escape as html_escape
+
+# Bar chart -> PNG -> embed in HTML
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
+
 import json
 import re
 import sys
@@ -80,6 +90,166 @@ def detect_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
             return cols[cand.lower()]
     return None
 
+def _find_col_ci(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    cols = {c.lower(): c for c in df.columns}
+    for cand in candidates:
+        c = cols.get(cand.lower())
+        if c:
+            return c
+    return None
+
+
+def _bar_png_base64(labels: list[str], values: list[float], title: str) -> str | None:
+    if plt is None:
+        return None
+
+    fig_w = max(8.0, min(16.0, 0.45 * max(1, len(labels))))
+    fig, ax = plt.subplots(figsize=(fig_w, 4.8))
+
+    ax.bar(range(len(labels)), values)
+    ax.set_title(title)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_ylabel("Valore")
+
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=160)
+    plt.close(fig)
+
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return b64
+
+
+def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str]) -> list[Path]:
+    charts_dir = outdir / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    if not obs_csv.exists():
+        return []
+
+    df = pd.read_csv(obs_csv, dtype=str, keep_default_na=False)
+
+    ep_col = _find_col_ci(df, ["endpoint_key", "endpoint", "variabile", "key"])
+    if ep_col is None:
+        (charts_dir / "README.html").write_text(
+            "<h2>Nessun grafico</h2><p>Colonna endpoint_key non trovata in observations_semantic.csv.</p>",
+            encoding="utf-8",
+        )
+        return [charts_dir / "README.html"]
+
+    # Colonne “probabili”
+    cat_col = _find_col_ci(df, ["category", "categoria", "label", "modalita", "modalità", "name", "x", "voce", "descrizione"])
+    val_col = _find_col_ci(df, ["value", "valore", "y", "n", "count", "numero", "percent", "percentage", "pct"])
+    title_col = _find_col_ci(df, ["title", "titolo", "nome"])
+
+    created: list[Path] = []
+
+    # Index
+    index_items = []
+
+    for k in picked:
+        dfk = df[df[ep_col].astype(str) == str(k)].copy()
+        if dfk.empty:
+            continue
+
+        page_title = str(k)
+        if title_col and len(dfk[title_col].unique()) == 1:
+            t = dfk[title_col].iloc[0].strip()
+            if t:
+                page_title = f"{k} · {t}"
+
+        html_path = charts_dir / f"{k}.html"
+
+        if (cat_col is None) or (val_col is None):
+            msg = (
+                "<h2>Nessun grafico</h2>"
+                f"<p>Endpoint: <b>{html_escape(k)}</b></p>"
+                "<p>Servono una colonna categoria e una colonna valore in observations_semantic.csv.</p>"
+            )
+            html_path.write_text(msg, encoding="utf-8")
+            created.append(html_path)
+            index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a> (solo testo)</li>")
+            continue
+
+        dfk[val_col] = pd.to_numeric(dfk[val_col], errors="coerce")
+        dfk = dfk.dropna(subset=[val_col])
+
+        if dfk.empty:
+            html_path.write_text(
+                f"<h2>Nessun grafico</h2><p>Endpoint: <b>{html_escape(k)}</b></p><p>Nessun valore numerico.</p>",
+                encoding="utf-8",
+            )
+            created.append(html_path)
+            index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a> (nessun numerico)</li>")
+            continue
+
+        agg = (
+            dfk.groupby(cat_col, dropna=False)[val_col]
+            .sum()
+            .sort_values(ascending=False)
+            .head(30)
+        )
+
+        labels = [str(x) for x in agg.index.tolist()]
+        values = [float(x) for x in agg.values.tolist()]
+
+        b64 = _bar_png_base64(labels, values, page_title)
+
+        if b64 is None:
+            html_path.write_text(
+                f"<h2>{html_escape(page_title)}</h2><p>Matplotlib non disponibile: impossibile creare bar chart.</p>",
+                encoding="utf-8",
+            )
+            created.append(html_path)
+            index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a> (no matplotlib)</li>")
+            continue
+
+        html = f"""
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>{html_escape(page_title)}</title>
+            <style>
+              body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }}
+              .img {{ max-width: 100%; height: auto; border: 1px solid #eee; border-radius: 8px; }}
+              .meta {{ color: #666; font-size: 13px; margin-top: 8px; }}
+            </style>
+          </head>
+          <body>
+            <h2>{html_escape(page_title)}</h2>
+            <img class="img" src="data:image/png;base64,{b64}" />
+            <div class="meta">Aggregazione: somma di {html_escape(val_col)} per {html_escape(cat_col)} (top 30).</div>
+          </body>
+        </html>
+        """.strip()
+
+        html_path.write_text(html, encoding="utf-8")
+        created.append(html_path)
+        index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a></li>")
+
+    index_html = f"""
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Grafici</title>
+      </head>
+      <body>
+        <h2>Grafici</h2>
+        <ul>
+          {''.join(index_items) if index_items else '<li>Nessun grafico creato.</li>'}
+        </ul>
+      </body>
+    </html>
+    """.strip()
+
+    index_path = charts_dir / "index.html"
+    index_path.write_text(index_html, encoding="utf-8")
+    created.insert(0, index_path)
+
+    return created
+
 
 @st.cache_data(show_spinner=False)
 def load_registry_from_path(path: str, sep: str) -> pd.DataFrame:
@@ -159,8 +329,20 @@ def run_scraper(
 def zip_selected(files: list[Path], zip_path: Path) -> None:
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
         for fp in files:
-            if fp.exists() and fp.is_file():
+            if not fp.exists():
+                continue
+
+            if fp.is_file():
                 z.write(fp, fp.name)
+                continue
+
+            if fp.is_dir():
+                base = fp.name
+                for sub in fp.rglob("*"):
+                    if sub.is_file():
+                        arcname = str(Path(base) / sub.relative_to(fp))
+                        z.write(sub, arcname)
+
 
 
 def cache_status_for(reg: pd.DataFrame, rawdir: Path, picked: list[str]) -> pd.DataFrame:
@@ -541,6 +723,31 @@ elif step == 2:
 
     st.success("OK")
 
+    charts_dir = outdir / "charts"
+    charts_zip = job_dir / "charts.zip"
+
+    if make_charts:
+        created = build_charts_from_observations(obs, outdir, picked)
+
+        # zip solo charts
+        if charts_dir.exists():
+            zip_selected(
+                [job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt", anag, obs, charts_dir, charts_zip],
+                zip_path
+            )
+        if created:
+            st.markdown("### Grafici (HTML)")
+            st.caption("Bar chart per variabile. Apri index.html dentro lo zip.")
+            if charts_zip.exists():
+                st.download_button(
+                    "Scarica grafici (charts.zip)",
+                    data=charts_zip.read_bytes(),
+                    file_name="charts.zip",
+                    mime="application/zip",
+                    key=f"dl_charts_{job_id}",
+                )
+
+    
     # Preview
     p1, p2 = st.columns(2, gap="small")
     with p1:
