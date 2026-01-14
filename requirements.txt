@@ -6,3 +6,4 @@ aiohttp
 tqdm
 folium
 streamlit-folium
+plotly
