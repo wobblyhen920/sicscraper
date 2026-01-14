@@ -210,7 +210,7 @@ with st.sidebar:
 
     use_cache = st.checkbox("Usa cache globale (data/raw)", value=True)
     drop_kind = st.checkbox("Togli colonna kind", value=False)
-    make_charts = st.checkbox("Crea grafici (HTML) per variabili selezionate", value=False)
+    make_charts = st.checkbox("Crea grafici (HTML) per variabili selezionate", value=True)
 
     st.markdown("### Limiti runtime (prudenza)")
     concurrency = st.slider("Concurrency", min_value=1, max_value=8, value=4)
@@ -250,7 +250,7 @@ col_lat = detect_col(reg, ["latitudine", "latitude", "lat", "y", "LATITUDINE", "
 col_lon = detect_col(reg, ["longitudine", "longitude", "lon", "lng", "long", "x", "LONGITUDINE", "LON", "LNG"])
 
 # Explain journey
-steps = ["1) Scuole", "2) Variabili", "3) Esecuzione", "4) Job e cache"]
+steps = ["1) Scuole", "2) Variabili", "3) Visualizza", "[Debug] 4) Job e cache"]
 st.caption("Percorso: seleziona scuole → scegli variabili → esegui scraping → scarica output / gestisci cache.")
 
 # Step selector + navigation
@@ -263,7 +263,7 @@ with col_nav2:
     step_label = st.radio("Passi", options=steps, index=st.session_state["step"], horizontal=True, label_visibility="collapsed")
     st.session_state["step"] = steps.index(step_label)
 with col_nav3:
-    if st.button("Avanti ▶", disabled=(st.session_state["step"] == len(steps) - 1), key="nav_next"):
+    if st.button("▶ AVANTI ▶", disabled=(st.session_state["step"] == len(steps) - 1), key="nav_next"):
         st.session_state["step"] = min(len(steps) - 1, st.session_state["step"] + 1)
         st.rerun()
 
@@ -557,15 +557,15 @@ elif step == 2:
     d1, d2, d3 = st.columns(3, gap="small")
     with d1:
         if anag.exists():
-            st.download_button("Scarica anagrafica_base_wide.csv", data=anag.read_bytes(), file_name="anagrafica_base_wide.csv", mime="text/csv", key=f"dl_anag_{job_id}")
+            st.download_button("Scarica il file csv delle anagrafiche", data=anag.read_bytes(), file_name="anagrafica_base_wide.csv", mime="text/csv", key=f"dl_anag_{job_id}")
     with d2:
         if obs.exists():
-            st.download_button("Scarica observations_semantic.csv", data=obs.read_bytes(), file_name="observations_semantic.csv", mime="text/csv", key=f"dl_obs_{job_id}")
+            st.download_button("SCARICA IL DATASET CSV", data=obs.read_bytes(), file_name="observations_semantic.csv", mime="text/csv", key=f"dl_obs_{job_id}")
     with d3:
         # zip minimal: meta + logs + csv
         zip_path = job_dir / "job.zip"
         zip_selected([job_dir / "meta.json", job_dir / "stdout.txt", job_dir / "stderr.txt", anag, obs], zip_path)
-        st.download_button("Scarica job.zip", data=zip_path.read_bytes(), file_name="job.zip", mime="application/zip", key=f"dl_zip_{job_id}")
+        st.download_button("Scarica come file zip", data=zip_path.read_bytes(), file_name="job.zip", mime="application/zip", key=f"dl_zip_{job_id}")
 
     with st.expander("Log"):
         st.code((cp.stdout or "")[-8000:])
