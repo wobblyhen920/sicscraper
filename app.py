@@ -7,6 +7,10 @@ try:
     import matplotlib.pyplot as plt
 except Exception:
     plt = None
+try:
+    import plotly.express as px
+except Exception:
+    px = None
 
 import json
 import re
@@ -122,8 +126,10 @@ def _bar_png_base64(labels: list[str], values: list[float], title: str) -> str |
 
 def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str]) -> list[Path]:
     """
-    Crea HTML (uno per variabile) con una bar chart PNG embedded base64.
-    Output: outdir/charts/*.html + index.html
+    Crea HTML per ogni variabile selezionata dentro outdir/charts.
+    - Grafici interattivi se Plotly disponibile
+    - Fallback a HTML statico minimale se Plotly non disponibile
+    - Aggregazione: MEDIA (non somma)
     """
     charts_dir = outdir / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
@@ -135,11 +141,12 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
 
     ep_col = _find_col_ci(df, ["endpoint_key", "endpoint", "variabile", "key"])
     if ep_col is None:
-        (charts_dir / "README.html").write_text(
+        p = charts_dir / "README.html"
+        p.write_text(
             "<h2>Nessun grafico</h2><p>Colonna endpoint_key non trovata in observations_semantic.csv.</p>",
             encoding="utf-8",
         )
-        return [charts_dir / "README.html"]
+        return [p]
 
     cat_col = _find_col_ci(df, ["category", "categoria", "label", "modalita", "modalità", "name", "x", "voce", "descrizione"])
     val_col = _find_col_ci(df, ["value", "valore", "y", "n", "count", "numero", "percent", "percentage", "pct"])
@@ -155,7 +162,7 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
 
         page_title = str(k)
         if title_col and len(dfk[title_col].unique()) == 1:
-            t = dfk[title_col].iloc[0].strip()
+            t = str(dfk[title_col].iloc[0]).strip()
             if t:
                 page_title = f"{k} · {t}"
 
@@ -163,11 +170,8 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
 
         if (cat_col is None) or (val_col is None):
             html_path.write_text(
-                (
-                    "<h2>Nessun grafico</h2>"
-                    f"<p>Endpoint: <b>{html_escape(k)}</b></p>"
-                    "<p>Servono una colonna categoria e una colonna valore in observations_semantic.csv.</p>"
-                ),
+                f"<h2>Nessun grafico</h2><p>Endpoint: <b>{html_escape(k)}</b></p>"
+                "<p>Servono una colonna categoria e una colonna valore in observations_semantic.csv.</p>",
                 encoding="utf-8",
             )
             created.append(html_path)
@@ -187,58 +191,51 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
 
         agg = (
             dfk.groupby(cat_col, dropna=False)[val_col]
-            .mean()
+            .mean()  # <-- MEDIA
             .sort_values(ascending=False)
             .head(30)
+            .reset_index()
+            .rename(columns={cat_col: "categoria", val_col: "valore"})
         )
 
-        labels = [str(x) for x in agg.index.tolist()]
-        values = [float(x) for x in agg.values.tolist()]
-
-        b64 = _bar_png_base64(labels, values, page_title)
-        if b64 is None:
+        # Plotly interattivo se disponibile
+        if px is not None and len(agg) > 0:
+            # barre orizzontali: leggibilità molto maggiore
+            fig = px.bar(
+                agg.sort_values("valore", ascending=True),
+                x="valore",
+                y="categoria",
+                orientation="h",
+                title=page_title,
+            )
+            fig.update_layout(
+                height=max(420, 22 * len(agg) + 140),
+                margin=dict(l=10, r=10, t=70, b=10),
+                xaxis_title="Valore (media)",
+                yaxis_title="",
+            )
+            fig.write_html(html_path, include_plotlyjs="cdn", full_html=True)
+        else:
+            # fallback HTML statico minimale
+            rows = "\n".join([f"<tr><td>{html_escape(str(r['categoria']))}</td><td>{r['valore']}</td></tr>" for _, r in agg.iterrows()])
             html_path.write_text(
-                f"<h2>{html_escape(page_title)}</h2><p>Matplotlib non disponibile: impossibile creare bar chart.</p>",
+                f"<h2>{html_escape(page_title)}</h2>"
+                "<p>Plotly non disponibile: export tabellare.</p>"
+                "<p>Aggregazione: media (top 30).</p>"
+                f"<table border='1' cellpadding='6' cellspacing='0'><tr><th>Categoria</th><th>Valore</th></tr>{rows}</table>",
                 encoding="utf-8",
             )
-            created.append(html_path)
-            index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a> (no matplotlib)</li>")
-            continue
 
-        html = f"""
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>{html_escape(page_title)}</title>
-            <style>
-              body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }}
-              .img {{ max-width: 100%; height: auto; border: 1px solid #eee; border-radius: 8px; }}
-              .meta {{ color: #666; font-size: 13px; margin-top: 8px; }}
-            </style>
-          </head>
-          <body>
-            <h2>{html_escape(page_title)}</h2>
-            <img class="img" src="data:image/png;base64,{b64}" />
-            <div class="meta">Aggregazione: media di {html_escape(val_col)} per {html_escape(cat_col)} (top 30).</div>
-          </body>
-        </html>
-        """.strip()
-
-        html_path.write_text(html, encoding="utf-8")
         created.append(html_path)
         index_items.append(f"<li><a href='{html_escape(html_path.name)}'>{html_escape(page_title)}</a></li>")
 
     index_html = f"""
     <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Grafici</title>
-      </head>
+      <head><meta charset="utf-8" /><title>Grafici</title></head>
       <body>
         <h2>Grafici</h2>
-        <ul>
-          {''.join(index_items) if index_items else '<li>Nessun grafico creato.</li>'}
-        </ul>
+        <p>Aggregazione: <b>media</b> (top 30 per variabile).</p>
+        <ul>{''.join(index_items) if index_items else '<li>Nessun grafico creato.</li>'}</ul>
       </body>
     </html>
     """.strip()
@@ -248,6 +245,7 @@ def build_charts_from_observations(obs_csv: Path, outdir: Path, picked: list[str
     created.insert(0, index_path)
 
     return created
+
 
 
 @st.cache_data(show_spinner=False)
@@ -730,75 +728,79 @@ elif step == 2:
     charts_dir = outdir / "charts"
     charts_zip = job_dir / "charts.zip"
 
+  # ---------- GRAFICI (IN FONDO, TUTTI) ----------
     if make_charts:
-        build_charts_from_observations(obs, outdir, picked)
+        st.markdown("### Grafici (interattivi)")
+    
+        charts_dir = outdir / "charts"
+        charts_zip = job_dir / "charts.zip"
+    
+        # genera HTML in outdir/charts (plotly se possibile)
+        created_html = build_charts_from_observations(obs, outdir, picked)
+    
+        # zip charts/
         if charts_dir.exists():
             zip_selected([charts_dir], charts_zip)
-
-        st.markdown("### Grafici (in app)")
-        if not obs.exists():
-            st.caption("observations_semantic.csv assente: niente grafici.")
-        else:
+    
+        # rendering in-app: tutti automaticamente
+        if obs.exists():
             df_obs = pd.read_csv(obs, dtype=str, keep_default_na=False)
-
             ep_col = _find_col_ci(df_obs, ["endpoint_key", "endpoint", "variabile", "key"])
             cat_col = _find_col_ci(df_obs, ["category", "categoria", "label", "modalita", "modalità", "name", "x", "voce", "descrizione"])
             val_col = _find_col_ci(df_obs, ["value", "valore", "y", "n", "count", "numero", "percent", "percentage", "pct"])
             title_col = _find_col_ci(df_obs, ["title", "titolo", "nome"])
-
-            if not (ep_col and cat_col and val_col):
-                st.caption("Impossibile: mancano colonne endpoint/categoria/valore in observations_semantic.csv.")
-            else:
-                k_sel = st.selectbox(
-                    "Seleziona variabile",
-                    options=picked,
-                    index=0,
-                    key=f"chart_sel_{job_id}",
-                )
-
-                dfk = df_obs[df_obs[ep_col].astype(str) == str(k_sel)].copy()
-                dfk[val_col] = pd.to_numeric(dfk[val_col], errors="coerce")
-                dfk = dfk.dropna(subset=[val_col])
-
-                if dfk.empty:
-                    st.caption("Nessun valore numerico per questa variabile.")
-                else:
-                    chart_title = k_sel
+    
+            if ep_col and cat_col and val_col:
+                # per evitare una pagina ingestibile, puoi mettere expander.
+                # Se li vuoi proprio tutti “aperti”, togli l’expander.
+                for k in picked:
+                    dfk = df_obs[df_obs[ep_col].astype(str) == str(k)].copy()
+                    if dfk.empty:
+                        continue
+    
+                    page_title = k
                     if title_col and len(dfk[title_col].unique()) == 1:
-                        t = dfk[title_col].iloc[0].strip()
+                        t = str(dfk[title_col].iloc[0]).strip()
                         if t:
-                            chart_title = f"{k_sel} · {t}"
-
+                            page_title = f"{k} · {t}"
+    
+                    dfk[val_col] = pd.to_numeric(dfk[val_col], errors="coerce")
+                    dfk = dfk.dropna(subset=[val_col])
+                    if dfk.empty:
+                        continue
+    
                     agg = (
                         dfk.groupby(cat_col, dropna=False)[val_col]
-                        .sum()
+                        .mean()  # MEDIA
                         .sort_values(ascending=False)
                         .head(30)
+                        .reset_index()
+                        .rename(columns={cat_col: "categoria", val_col: "valore"})
                     )
-                    labels = [str(x) for x in agg.index.tolist()]
-                    values = [float(x) for x in agg.values.tolist()]
+                    if len(agg) == 0:
+                        continue
+    
+                    # expander per non demolire la UI; vuoi tutti aperti -> expanded=True
+                    with st.expander(page_title, expanded=True):
+                        if px is not None:
+                            fig = px.bar(
+                                agg.sort_values("valore", ascending=True),
+                                x="valore",
+                                y="categoria",
+                                orientation="h",
+                                title=None,
+                            )
+                            fig.update_layout(
+                                height=max(420, 22 * len(agg) + 120),
+                                margin=dict(l=10, r=10, t=10, b=10),
+                                xaxis_title="Valore (media)",
+                                yaxis_title="",
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            # fallback non interattivo
+                            st.bar_chart(agg.set_index
 
-                    if plt is not None:
-                        fig_w = max(8.0, min(16.0, 0.45 * max(1, len(labels))))
-                        fig, ax = plt.subplots(figsize=(fig_w, 4.8))
-                        ax.bar(range(len(labels)), values)
-                        ax.set_title(chart_title)
-                        ax.set_xticks(range(len(labels)))
-                        ax.set_xticklabels(labels, rotation=45, ha="right")
-                        ax.set_ylabel("Valore")
-                        fig.tight_layout()
-                        st.pyplot(fig, clear_figure=True)
-                    else:
-                        st.bar_chart(pd.DataFrame({"categoria": labels, "valore": values}).set_index("categoria"))
-
-        if charts_zip.exists():
-            st.download_button(
-                "Scarica grafici (charts.zip)",
-                data=charts_zip.read_bytes(),
-                file_name="charts.zip",
-                mime="application/zip",
-                key=f"dl_charts_{job_id}",
-            )
 
     # ---------- PREVIEW ----------
     p1, p2 = st.columns(2, gap="small")
