@@ -769,6 +769,9 @@ elif step == 2:
             job_dir / "stdout.txt",
             job_dir / "stderr.txt",
         ]
+
+        charts_dir = outdir / "charts"
+
         if anag.exists():
             files_to_zip.append(anag)
         if obs.exists():
