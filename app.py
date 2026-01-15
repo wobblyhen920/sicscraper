@@ -771,6 +771,7 @@ elif step == 2:
         ]
 
         charts_dir = outdir / "charts"
+        charts_zip = job_dir / "charts.zip"
 
         if anag.exists():
             files_to_zip.append(anag)
@@ -797,8 +798,7 @@ elif step == 2:
         st.code((cp.stderr or "")[-8000:])
 
     # ---------- CHARTS ----------
-    charts_dir = outdir / "charts"
-    charts_zip = job_dir / "charts.zip"
+
     
     if make_charts:
         st.markdown("### Grafici (interattivi)")
