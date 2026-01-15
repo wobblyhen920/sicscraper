@@ -38,7 +38,6 @@ except Exception:
 DEFAULT_SCRAPER = "scraper.py"
 DEFAULT_REGISTRY = "data_static/input.csv"
 DEFAULT_SEP = ";"
-charts_dir = outdir / "charts"
 DATA_DIR = Path("data")
 RAW_CACHE_DIR = DATA_DIR / "raw"
 JOBS_DIR = DATA_DIR / "jobs"
