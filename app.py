@@ -884,36 +884,7 @@ elif step == 2:
         st.code((cp.stdout or "")[-8000:])
         st.code((cp.stderr or "")[-8000:])
 
-    # ---------- RENDER CHARTS IN APP (FROM GENERATED HTML) ----------
-    if make_charts:
-        st.markdown("### Grafici (tutti)")
-    
-        charts_dir = outdir / "charts"
-        index_html = charts_dir / "index.html"
-    
-        if not charts_dir.exists():
-            st.caption("Cartella charts assente.")
-        else:
-            # prendi tutti gli html dei grafici, escludendo index/readme
-            chart_pages = sorted([
-                p for p in charts_dir.glob("*.html")
-                if p.name not in ("index.html", "README.html")
-            ])
-    
-            if not chart_pages:
-                st.caption("Nessun grafico HTML trovato in charts/.")
-            else:
-                # opzionale: link all'index (se vuoi)
-                if index_html.exists():
-                    with st.expander("Index (HTML)"):
-                        components.html(index_html.read_text(encoding="utf-8"), height=260, scrolling=True)
-    
-                # mostra tutti i grafici
-                for p in chart_pages:
-                    with st.expander(p.stem, expanded=False):
-                        html = p.read_text(encoding="utf-8")
-                        components.html(html, height=620, scrolling=True)
-    
+
 
 # -------------------------
 # Step 4: Jobs & cache
