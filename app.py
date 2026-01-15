@@ -727,8 +727,8 @@ elif step == 2:
     # ---------- CHARTS ----------
     charts_dir = outdir / "charts"
     charts_zip = job_dir / "charts.zip"
-
-   if make_charts:
+    
+    if make_charts:
         st.markdown("### Grafici (interattivi)")
     
         charts_dir = outdir / "charts"
