@@ -392,7 +392,7 @@ with st.sidebar:
 
     use_cache = st.checkbox("Usa cache globale (data/raw)", value=True)
     drop_kind = st.checkbox("Togli colonna kind", value=False)
-    make_charts = st.checkbox("Crea grafici (HTML) per variabili selezionate", value=True)
+    make_charts = st.checkbox("Crea grafici per variabili selezionate", value=True)
 
     st.markdown("### [Debug] Limiti runtime")
     concurrency = st.slider("Concurrency", min_value=1, max_value=8, value=4)
@@ -437,14 +437,14 @@ st.caption("Percorso: selezione scuole → selezione variabili → esecuzione �
 # Nav
 col_nav1, col_nav2, col_nav3 = st.columns([1, 4, 1], gap="small")
 with col_nav1:
-    if st.button("◀ Indietro", disabled=(st.session_state["step"] == 0), key="nav_prev"):
+    if st.button("◀ INDIETRO ◀", disabled=(st.session_state["step"] == 0), key="nav_prev"):
         st.session_state["step"] = max(0, st.session_state["step"] - 1)
         st.rerun()
 with col_nav2:
     step_label = st.radio("Passi", options=steps, index=st.session_state["step"], horizontal=True, label_visibility="collapsed")
     st.session_state["step"] = steps.index(step_label)
 with col_nav3:
-    if st.button("▶ Avanti ▶", disabled=(st.session_state["step"] == len(steps) - 1), key="nav_next"):
+    if st.button("▶ AVANTI ▶", disabled=(st.session_state["step"] == len(steps) - 1), key="nav_next"):
         st.session_state["step"] = min(len(steps) - 1, st.session_state["step"] + 1)
         st.rerun()
 
@@ -643,7 +643,7 @@ elif step == 1:
 # Step 3: Run
 # -------------------------
 elif step == 2:
-    st.subheader("Passo 3 · Esecuzione")
+    st.subheader("Passo 3 · Lancia lo scraper e osserva i dati")
 
     selected_codes = sorted(st.session_state["selected_codes"])
     picked = [k for k, _ in ENDPOINTS if st.session_state["var_selection"].get(k, False)]
@@ -723,6 +723,76 @@ elif step == 2:
         st.stop()
 
     st.success("OK")
+
+    # ---------- PREVIEW ----------
+    p1, p2 = st.columns(2, gap="small")
+    with p1:
+        if anag.exists():
+            st.caption("Preview anagrafica_base_wide.csv")
+            st.dataframe(pd.read_csv(anag, dtype=str, keep_default_na=False).head(30), use_container_width=True)
+        else:
+            st.caption("anagrafica_base_wide.csv assente.")
+    with p2:
+        if obs.exists():
+            st.caption("Preview observations_semantic.csv")
+            st.dataframe(pd.read_csv(obs, dtype=str, keep_default_na=False).head(30), use_container_width=True)
+        else:
+            st.caption("observations_semantic.csv assente.")
+
+    # ---------- DOWNLOAD ----------
+    st.markdown("### Download dataset")
+    d1, d2, d3 = st.columns(3, gap="small")
+
+    with d1:
+        if anag.exists():
+            st.download_button(
+                "Scarica anagrafiche",
+                data=anag.read_bytes(),
+                file_name="anagrafica_base_wide.csv",
+                mime="text/csv",
+                key=f"dl_anag_{job_id}",
+            )
+
+    with d2:
+        if obs.exists():
+            st.download_button(
+                "SCARICA DATASET CSV",
+                data=obs.read_bytes(),
+                file_name="observations_semantic.csv",
+                mime="text/csv",
+                key=f"dl_obs_{job_id}",
+            )
+
+    with d3:
+        zip_path = job_dir / "job.zip"
+        files_to_zip = [
+            job_dir / "meta.json",
+            job_dir / "stdout.txt",
+            job_dir / "stderr.txt",
+        ]
+        if anag.exists():
+            files_to_zip.append(anag)
+        if obs.exists():
+            files_to_zip.append(obs)
+        if charts_dir.exists():
+            files_to_zip.append(charts_dir)
+        if charts_zip.exists():
+            files_to_zip.append(charts_zip)
+
+        zip_selected(files_to_zip, zip_path)
+
+        if zip_path.exists():
+            st.download_button(
+                "Scarica job.zip",
+                data=zip_path.read_bytes(),
+                file_name="job.zip",
+                mime="application/zip",
+                key=f"dl_zip_{job_id}",
+            )
+
+    with st.expander("Log"):
+        st.code((cp.stdout or "")[-8000:])
+        st.code((cp.stderr or "")[-8000:])
 
     # ---------- CHARTS ----------
     charts_dir = outdir / "charts"
@@ -811,79 +881,6 @@ elif step == 2:
                 mime="application/zip",
                 key=f"dl_charts_{job_id}",
             )
-
-
-
-    # ---------- PREVIEW ----------
-    p1, p2 = st.columns(2, gap="small")
-    with p1:
-        if anag.exists():
-            st.caption("Preview anagrafica_base_wide.csv")
-            st.dataframe(pd.read_csv(anag, dtype=str, keep_default_na=False).head(30), use_container_width=True)
-        else:
-            st.caption("anagrafica_base_wide.csv assente.")
-    with p2:
-        if obs.exists():
-            st.caption("Preview observations_semantic.csv")
-            st.dataframe(pd.read_csv(obs, dtype=str, keep_default_na=False).head(30), use_container_width=True)
-        else:
-            st.caption("observations_semantic.csv assente.")
-
-    # ---------- DOWNLOAD ----------
-    st.markdown("### Download")
-    d1, d2, d3 = st.columns(3, gap="small")
-
-    with d1:
-        if anag.exists():
-            st.download_button(
-                "Scarica anagrafiche",
-                data=anag.read_bytes(),
-                file_name="anagrafica_base_wide.csv",
-                mime="text/csv",
-                key=f"dl_anag_{job_id}",
-            )
-
-    with d2:
-        if obs.exists():
-            st.download_button(
-                "Scarica dataset (semantic)",
-                data=obs.read_bytes(),
-                file_name="observations_semantic.csv",
-                mime="text/csv",
-                key=f"dl_obs_{job_id}",
-            )
-
-    with d3:
-        zip_path = job_dir / "job.zip"
-        files_to_zip = [
-            job_dir / "meta.json",
-            job_dir / "stdout.txt",
-            job_dir / "stderr.txt",
-        ]
-        if anag.exists():
-            files_to_zip.append(anag)
-        if obs.exists():
-            files_to_zip.append(obs)
-        if charts_dir.exists():
-            files_to_zip.append(charts_dir)
-        if charts_zip.exists():
-            files_to_zip.append(charts_zip)
-
-        zip_selected(files_to_zip, zip_path)
-
-        if zip_path.exists():
-            st.download_button(
-                "Scarica job.zip",
-                data=zip_path.read_bytes(),
-                file_name="job.zip",
-                mime="application/zip",
-                key=f"dl_zip_{job_id}",
-            )
-
-    with st.expander("Log"):
-        st.code((cp.stdout or "")[-8000:])
-        st.code((cp.stderr or "")[-8000:])
-
 
 
 # -------------------------
